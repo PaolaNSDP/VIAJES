@@ -10,13 +10,13 @@ App personal para organizar los próximos viajes. Funciona en web, iPhone y Andr
 - Cuenta con correo y contraseña: los viajes se guardan en Supabase y se ven igual en el móvil y en el ordenador. También queda una copia en el dispositivo.
 - Versión web publicada en GitHub Pages: https://paolansdp.github.io/VIAJES/
 
-Las sugerencias y los eventos son, de momento, **datos de ejemplo** para Lisboa y Roma.
+Las sugerencias salen de fuentes gratuitas: OpenStreetMap (restaurantes, cultura y mercadillos con su horario), Wikidata (descripciones) y Ticketmaster (partidos, conciertos y espectáculos).
 
 ## Próximos pasos
 
-1. Sugerencias reales: Google Places para restaurantes y cultura, ordenadas por Claude según ambiente y tipo de viaje.
-2. Eventos reales: Ticketmaster, PredictHQ y búsqueda web.
-3. Rediseño visual.
+1. Ajustes: desplegables de aeropuertos y otros.
+2. Rediseño visual.
+3. Si las sugerencias se quedan cortas: Google Places con reseñas (requiere tarjeta).
 
 ## Cómo probarla
 
@@ -30,11 +30,12 @@ npm start         # y escanear el QR con la app Expo Go en el móvil
 
 - `.env` tiene la dirección y la clave pública de Supabase. Si se quitan, la app funciona solo en el dispositivo, sin cuenta.
 - `supabase/esquema.sql` crea la tabla `viajes` con sus permisos. Se ejecuta una vez en el SQL Editor de Supabase.
-- `.github/workflows/web.yml` publica la web en GitHub Pages cada vez que cambia `main`.
+- `.github/workflows/web.yml` publica la web en GitHub Pages cada vez que cambia `main`. Usa el secreto `TICKETMASTER_KEY` del repositorio si existe.
 
 ## Estructura
 
 - `src/app/` pantallas (Expo Router): lista de viajes, nuevo viaje y detalle del viaje.
 - `src/components/` piezas de interfaz y las secciones del viaje.
 - `src/data/` tipos, viajes de ejemplo y el almacén (`store.tsx`), que guarda en el dispositivo y sincroniza con Supabase.
-- `src/services/recomendaciones.ts` sugerencias y eventos; aquí se conectarán las fuentes reales.
+- `src/services/recomendaciones.ts` sugerencias y eventos; cada fuente está en `src/services/fuentes/`.
+- `tests/` pruebas (`npm test`).

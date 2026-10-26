@@ -1,31 +1,56 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { View } from 'react-native';
+import { ActivityIndicator, Linking, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { nuevoId, useViajes } from '@/data/store';
 import { AMBIENTES, TIPOS_VIAJE, type Ambiente, type TipoViaje, type Viaje } from '@/data/types';
 import { useTheme } from '@/hooks/use-theme';
 import { diasDelViaje, fechaCorta } from '@/lib/fechas';
-import { buscarCultura, buscarEventos, buscarRestaurantes, type Evento, type Restaurante, type VisitaCultural } from '@/services/recomendaciones';
+import { buscarCultura, buscarEventos, buscarRestaurantes } from '@/services/recomendaciones';
 
 import { Boton, Chip, Fila, Nota, Tarjeta, Texto } from './ui';
 
+type Carga<T> = { estado: 'cargando' } | { estado: 'ok'; datos: T } | { estado: 'error'; mensaje: string };
+
 /** Carga un resultado asíncrono y lo vuelve a pedir cuando cambian las dependencias. */
-function useCarga<T>(cargar: () => Promise<T>, deps: unknown[]) {
-  const [datos, setDatos] = useState<T | undefined>(undefined);
+function useCarga<T>(cargar: () => Promise<T>, deps: unknown[]): Carga<T> {
+  const [carga, setCarga] = useState<Carga<T>>({ estado: 'cargando' });
   useEffect(() => {
     let vigente = true;
-    cargar().then((d) => vigente && setDatos(d));
+    setCarga({ estado: 'cargando' });
+    cargar().then(
+      (datos) => vigente && setCarga({ estado: 'ok', datos }),
+      (e: Error) => vigente && setCarga({ estado: 'error', mensaje: e.message || 'Error de conexión.' }),
+    );
     return () => {
       vigente = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  return datos;
+  return carga;
+}
+
+function Estado({ carga, que }: { carga: Carga<unknown>; que: string }) {
+  const c = useTheme();
+  if (carga.estado === 'cargando')
+    return (
+      <Fila>
+        <ActivityIndicator color={c.accent} />
+        <Texto variante="secundario">Buscando {que}…</Texto>
+      </Fila>
+    );
+  if (carga.estado === 'error')
+    return (
+      <Tarjeta>
+        <Texto variante="subtitulo" style={{ fontSize: 16 }}>No se han podido cargar {que}</Texto>
+        <Texto variante="secundario">{carga.mensaje} Comprueba la conexión y vuelve a abrir esta pestaña.</Texto>
+      </Tarjeta>
+    );
+  return null;
 }
 
 /** Botón que añade una sugerencia al itinerario, en su fecha o en el primer día libre del viaje. */
-function AnadirAlItinerario({ viaje, plan, fecha }: { viaje: Viaje; plan: string; fecha?: string | null }) {
+function AnadirAlItinerario({ viaje, plan, fecha }: { viaje: Viaje; plan: string; fecha?: string }) {
   const { guardarElemento } = useViajes();
   const ya = viaje.itinerario.find((i) => i.plan === plan);
   if (ya) return <Texto variante="secundario" color="accent">✓ En tu itinerario el {fechaCorta(ya.fecha)}</Texto>;
@@ -37,26 +62,17 @@ function AnadirAlItinerario({ viaje, plan, fecha }: { viaje: Viaje; plan: string
   return <Boton tipo="enlace" titulo="+ Añadir al itinerario" onPress={anadir} />;
 }
 
-function SinDatos({ viaje }: { viaje: Viaje }) {
-  return (
-    <Tarjeta>
-      <Texto variante="subtitulo">Aún no hay sugerencias para {viaje.destino}</Texto>
-      <Texto variante="secundario">De momento solo hay datos de ejemplo para Lisboa y Roma. Cuando conectemos las fuentes reales, saldrán para cualquier destino.</Texto>
-    </Tarjeta>
-  );
-}
-
-function Sugerencia({ viaje, nombre, meta, motivo, fecha, cabecera }: { viaje: Viaje; nombre: string; meta: string; motivo: string; fecha?: string | null; cabecera?: ReactNode }) {
+function Sugerencia({ viaje, nombre, meta, texto, fecha, enlace, textoEnlace = 'Ver en el mapa', cabecera }: { viaje: Viaje; nombre: string; meta?: string; texto?: string; fecha?: string; enlace: string; textoEnlace?: string; cabecera?: ReactNode }) {
   return (
     <Tarjeta>
       {cabecera}
       <Texto variante="subtitulo" style={{ fontSize: 16 }}>{nombre}</Texto>
-      <Texto variante="secundario">{meta}</Texto>
-      <Texto variante="secundario">
-        <Texto variante="secundario" color="text" style={{ fontWeight: '600' }}>Por qué te encaja: </Texto>
-        {motivo}
-      </Texto>
-      <AnadirAlItinerario viaje={viaje} plan={nombre} fecha={fecha} />
+      {meta ? <Texto variante="secundario">{meta}</Texto> : null}
+      {texto ? <Texto variante="secundario">{texto}</Texto> : null}
+      <Fila style={{ gap: Spacing.three }}>
+        <AnadirAlItinerario viaje={viaje} plan={nombre} fecha={fecha} />
+        <Boton tipo="enlace" titulo={textoEnlace} onPress={() => Linking.openURL(enlace)} />
+      </Fila>
     </Tarjeta>
   );
 }
@@ -64,9 +80,8 @@ function Sugerencia({ viaje, nombre, meta, motivo, fecha, cabecera }: { viaje: V
 export function DondeComer({ viaje }: { viaje: Viaje }) {
   const [tipo, setTipo] = useState<TipoViaje>(viaje.tipo);
   const [ambiente, setAmbiente] = useState<Ambiente | null>(null);
-  const lista = useCarga<Restaurante[] | null>(() => buscarRestaurantes(viaje, tipo, ambiente), [viaje.destino, tipo, ambiente]);
+  const carga = useCarga(() => buscarRestaurantes(viaje, tipo, ambiente), [viaje.destino, viaje.pais, tipo, ambiente]);
 
-  if (lista === null) return <SinDatos viaje={viaje} />;
   return (
     <View style={{ gap: Spacing.three }}>
       <View style={{ gap: Spacing.two }}>
@@ -77,23 +92,31 @@ export function DondeComer({ viaje }: { viaje: Viaje }) {
         <Texto variante="etiqueta">Ambiente</Texto>
         <Fila>{AMBIENTES.map((a) => <Chip key={a} texto={a} activo={a === ambiente} onPress={() => setAmbiente(a === ambiente ? null : a)} />)}</Fila>
       </View>
-      {lista?.length === 0 ? <Texto variante="secundario">No hay sugerencias con ese ambiente. Prueba otro.</Texto> : null}
-      {lista?.map((r) => (
-        <Sugerencia key={r.nombre} viaje={viaje} nombre={r.nombre} meta={`${r.zona} · ${r.precio} · ${r.ambientes.join(', ')}`} motivo={r.motivo} />
-      ))}
-      <Nota>Sugerencias de ejemplo. Más adelante vendrán de Google Places y las ordenará Claude según el ambiente y el tipo de viaje.</Nota>
+      <Estado carga={carga} que="sitios para comer" />
+      {carga.estado === 'ok' && !carga.datos.length ? <Texto variante="secundario">No hay sitios con ese ambiente cerca del centro. Prueba otro.</Texto> : null}
+      {carga.estado === 'ok'
+        ? carga.datos.map((r) => (
+            <Sugerencia key={r.id} viaje={viaje} nombre={r.nombre} meta={[r.resumen, r.zona].filter(Boolean).join(' · ')} texto={r.ambientes.length ? `Ambiente: ${r.ambientes.join(', ')}` : undefined} enlace={r.enlace} />
+          ))
+        : null}
+      <Nota>Sitios del centro de {viaje.destino} según OpenStreetMap. El ambiente se deduce de sus datos (tipo de local, cocina, terraza, horario), no de reseñas.</Nota>
     </View>
   );
 }
 
 export function Cultura({ viaje }: { viaje: Viaje }) {
-  const lista = useCarga<VisitaCultural[] | null>(() => buscarCultura(viaje), [viaje.destino]);
-  if (lista === null) return <SinDatos viaje={viaje} />;
+  const carga = useCarga(() => buscarCultura(viaje), [viaje.destino, viaje.pais]);
   return (
     <View style={{ gap: Spacing.three }}>
       <Texto variante="subtitulo">Visitas culturales</Texto>
-      {lista?.map((v) => <Sugerencia key={v.nombre} viaje={viaje} nombre={v.nombre} meta={`${v.zona} · ${v.duracion}`} motivo={v.motivo} />)}
-      <Nota>Al añadir una visita al itinerario se coloca en el primer día libre de tu viaje.</Nota>
+      <Estado carga={carga} que="visitas culturales" />
+      {carga.estado === 'ok' && !carga.datos.length ? <Texto variante="secundario">No se han encontrado visitas para este destino.</Texto> : null}
+      {carga.estado === 'ok'
+        ? carga.datos.map((v) => (
+            <Sugerencia key={v.id} viaje={viaje} nombre={v.nombre} meta={v.tipo} texto={v.descripcion} enlace={v.enlace} textoEnlace={v.enlace.includes('google.com/maps') ? 'Ver en el mapa' : 'Web oficial'} />
+          ))
+        : null}
+      <Nota>Museos, monumentos y miradores de OpenStreetMap, con descripciones de Wikidata. Al añadir una visita al itinerario se coloca en el primer día libre de tu viaje.</Nota>
     </View>
   );
 }
@@ -101,24 +124,27 @@ export function Cultura({ viaje }: { viaje: Viaje }) {
 export function Eventos({ viaje }: { viaje: Viaje }) {
   const c = useTheme();
   const [categoria, setCategoria] = useState<string>('Todos');
-  const lista = useCarga<Evento[] | null>(() => buscarEventos(viaje), [viaje.destino, viaje.inicio, viaje.fin]);
-  if (lista === null) return <SinDatos viaje={viaje} />;
-  const categorias = ['Todos', ...new Set(lista?.map((e) => e.categoria))];
-  const visibles = lista?.filter((e) => categoria === 'Todos' || e.categoria === categoria) ?? [];
+  const carga = useCarga(() => buscarEventos(viaje), [viaje.destino, viaje.pais, viaje.inicio, viaje.fin]);
+  const eventos = carga.estado === 'ok' ? carga.datos.eventos : [];
+  const categorias = ['Todos', ...new Set(eventos.map((e) => e.categoria))];
+  const visibles = eventos.filter((e) => categoria === 'Todos' || e.categoria === categoria);
 
   return (
     <View style={{ gap: Spacing.three }}>
       <Texto variante="subtitulo">Qué pasa en {viaje.destino} durante tu viaje</Texto>
-      <Fila>{categorias.map((cat) => <Chip key={cat} texto={cat} activo={cat === categoria} onPress={() => setCategoria(cat)} />)}</Fila>
-      {lista && !visibles.length ? <Texto variante="secundario">No hay eventos de esta categoría en tus fechas.</Texto> : null}
+      <Estado carga={carga} que="eventos" />
+      {eventos.length ? <Fila>{categorias.map((cat) => <Chip key={cat} texto={cat} activo={cat === categoria} onPress={() => setCategoria(cat)} />)}</Fila> : null}
+      {carga.estado === 'ok' && !eventos.length ? <Texto variante="secundario">No se han encontrado eventos en tus fechas.</Texto> : null}
       {visibles.map((e) => (
         <Sugerencia
-          key={e.nombre + e.cuando}
+          key={e.nombre + e.fecha}
           viaje={viaje}
           nombre={e.nombre}
           meta={e.zona}
-          motivo={e.motivo}
+          texto={e.detalle}
           fecha={e.fecha}
+          enlace={e.enlace}
+          textoEnlace={e.categoria === 'Mercadillo' ? 'Ver en el mapa' : 'Entradas e info'}
           cabecera={
             <Fila>
               <View style={{ backgroundColor: c.stub, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
@@ -129,7 +155,7 @@ export function Eventos({ viaje }: { viaje: Viaje }) {
           }
         />
       ))}
-      <Nota>Eventos de ejemplo. Más adelante: deportes y conciertos de Ticketmaster, ferias, mercadillos y exposiciones de PredictHQ, y una búsqueda web para lo más local.</Nota>
+      {carga.estado === 'ok' ? carga.datos.avisos.map((a) => <Nota key={a}>{a}</Nota>) : null}
     </View>
   );
 }
