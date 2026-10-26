@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
   chipTexto: { fontSize: 12.5, fontWeight: '600' },
   tarjeta: { borderRadius: 14, borderWidth: 1, padding: Spacing.three, gap: Spacing.two },
   fila: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.two },
-  campo: { gap: Spacing.one, flexGrow: 1, flexBasis: 140 },
+  campo: { gap: Spacing.one, flexGrow: 1, minWidth: 140 },
   input: { borderWidth: 1, borderRadius: 9, paddingHorizontal: 10, paddingVertical: 8, fontSize: 15 },
   nota: { borderRadius: 10, padding: 12 },
 });

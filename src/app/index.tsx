@@ -8,7 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { diasHasta, fechaLarga } from '@/lib/fechas';
 
 export default function MisViajes() {
-  const { viajes, cargado } = useViajes();
+  const { viajes, cargado, email, errorNube, salir } = useViajes();
   const c = useTheme();
   const ordenados = [...viajes].sort((a, b) => a.inicio.localeCompare(b.inicio));
 
@@ -19,6 +19,7 @@ export default function MisViajes() {
         <Boton titulo="+ Viaje" onPress={() => router.push('/nuevo')} />
       </Fila>
 
+      {errorNube ? <Nota>{errorNube}</Nota> : null}
       {!cargado ? <ActivityIndicator color={c.accent} /> : null}
       {cargado && !ordenados.length ? <Nota>Todavía no tienes viajes. Crea el primero con «+ Viaje».</Nota> : null}
 
@@ -51,6 +52,13 @@ export default function MisViajes() {
           </Link>
         );
       })}
+
+      {email ? (
+        <Fila style={{ justifyContent: 'space-between', marginTop: Spacing.four }}>
+          <Texto variante="secundario">Has entrado como {email}</Texto>
+          <Boton tipo="enlace" titulo="Salir" onPress={salir} />
+        </Fila>
+      ) : null}
     </Pantalla>
   );
 }
